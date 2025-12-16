@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rastreamento - Motorista</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"
+          integrity="sha384-jWvQwZ0pniS3pSGLr0MyOc0A9jAO6Rv9QOhzO9mQxTRuHsvC85QFqS5HP0o36yS2"
+          crossorigin="anonymous"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; padding: 16px; }
+    .card { max-width: 480px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+    .btn { display: inline-block; padding: 8px 12px; border-radius: 4px; border: none; cursor: pointer; }
+    .btn-primary { background-color: #2563eb; color: #fff; }
+    .btn-secondary { background-color: #e5e7eb; color: #111827; }
+    .status { margin-top: 8px; font-size: 14px; color: #4b5563; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Rastreamento em tempo real - Motorista</h2>
+    <p id="order-info"></p>
+
+    <button id="startTracking" class="btn btn-primary">Iniciar compartilhamento de localização</button>
+    <button id="stopTracking" class="btn btn-secondary" disabled>Parar</button>
+
+    <div class="status" id="status">Aguardando...</div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderId = urlParams.get("orderId");
+
+    const statusEl = document.getElementById("status");
+    const orderInfoEl = document.getElementById("order-info");
+    const btnStart = document.getElementById("startTracking");
+    const btnStop = document.getElementById("stopTracking");
+
+    let watchId = null;
+
+    if (!orderId) {
+      statusEl.textContent = "Erro: Nenhum orderId informado na URL.";
+      btnStart.disabled = true;
+    } else {
+      orderInfoEl.textContent = `Pedido: ${orderId}`;
+      socket.emit("joinOrderRoom", { orderId });
+    }
+
+    function updateStatus(text) {
+      statusEl.textContent = text;
+      console.log(text);
+    }
+
+    function startTracking() {
+      if (!navigator.geolocation) {
+        updateStatus("Geolocalização não é suportada pelo navegador.");
+        return;
+      }
+
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+      updateStatus("Obtendo localização...");
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const latitude = position.coords.latitude;
+          const longitude = position.coords.longitude;
+
+          updateStatus(
+            `Enviando localização: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
+          );
+
+          socket.emit("updateLocation", {
+            orderId,
+            latitude,
+            longitude,
+          });
+        },
+        (error) => {
+          console.error(error);
+          updateStatus("Erro ao obter localização: " + error.message);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 5000,
+          timeout: 10000,
+        }
+      );
+    }
+
+    function stopTracking() {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      updateStatus("Compartilhamento de localização pausado.");
+    }
+
+    btnStart.addEventListener("click", startTracking);
+    btnStop.addEventListener("click", stopTracking);
+
+    window.addEventListener("beforeunload", () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    });
+  </script>
+</body>
+</html>

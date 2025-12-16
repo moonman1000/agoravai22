@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Localização do Motorista</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <link rel="manifest" href="/manifest.json"> <!-- Link para o manifesto -->
+    <meta name="theme-color" content="#4285f4">
+    <link rel="apple-touch-icon" href="/icon-192x192.png"> <!-- Ícone para dispositivos Apple -->
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        #map { height: calc(100vh - 60px); }
+        #status { height: 60px; padding: 10px; background-color: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="status"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.2/socket.io.js"></script>
+    <script>
+        var socket = io();
+        var map, marcadorMotorista;
+        var statusElement = document.getElementById('status');
+
+        function inicializarMapa(lat, lng) {
+            map = L.map('map').setView([lat, lng], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            marcadorMotorista = L.marker([lat, lng]).addTo(map);
+        }
+
+        function atualizarLocalizacao(posicao) {
+            var lat = posicao.coords.latitude;
+            var lng = posicao.coords.longitude;
+
+            if (!map) {
+                inicializarMapa(lat, lng);
+            } else {
+                marcadorMotorista.setLatLng([lat, lng]);
+                map.flyTo([lat, lng], map.getZoom());
+            }
+
+            socket.emit('atualizarLocalizacao', { lat: lat, lng: lng });
+            statusElement.textContent = `Localização atualizada: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        }
+
+        function erroLocalizacao(erro) {
+            statusElement.textContent = `Erro ao obter localização: ${erro.message}`;
+        }
+
+        if ("geolocation" in navigator) {
+            navigator.geolocation.watchPosition(atualizarLocalizacao, erroLocalizacao, {
+                enableHighAccuracy: true,
+                timeout: 5000,
+                maximumAge: 0
+            });
+        } else {
+            statusElement.textContent = "Geolocalização não suportada neste navegador.";
+        }
+
+        // Registrar o Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then((reg) => console.log('Service Worker registrado', reg))
+                .catch((err) => console.log('Erro ao registrar Service Worker', err));
+        }
+
+        socket.on('connect', () => {
+            statusElement.textContent += " Conectado ao servidor.";
+        });
+
+        socket.on('disconnect', () => {
+            statusElement.textContent += " Desconectado do servidor.";
+        });
+    </script>
+</body>
+</html>
