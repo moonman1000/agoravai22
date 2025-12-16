@@ -1,95 +1,62 @@
-const express = require("express");
-const http = require("http");
-const path = require("path");
-const socketIo = require("socket.io");
-const cors = require("cors");
-const { createClient } = require("@supabase/supabase-js");
+// server.js
+const path = require('path');
+const express = require('express');
+const http = require('http');
+const cors = require('cors');
+const { Server } = require('socket.io');
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
-
-// Configuração Supabase via variáveis de ambiente
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error("SUPABASE_URL ou SUPABASE_ANON_KEY não configurados!");
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-app.use(cors());
+app.set('trust proxy', 1);
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
 
-// ==================== ROTA API PARA BUSCAR PEDIDO ====================
-app.get("/api/orders/:id", async (req, res) => {
-  const { id } = req.params;
+// Static
+const publicDir = path.join(__dirname, 'public');
+app.use(express.static(publicDir));
+app.get('/', (_req, res) => res.sendFile(path.join(publicDir, 'endereco.html')));
+app.get('/healthz', (_req, res) => res.status(200).send('ok'));
 
-  try {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, client_lat, client_lng, client_address, status, tracking_link")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Erro ao buscar pedido:", error);
-      return res.status(500).json({ error: "Erro ao buscar pedido no banco de dados" });
-    }
-
-    if (!data) {
-      return res.status(404).json({ error: "Pedido não encontrado" });
-    }
-
-    return res.json(data);
-  } catch (err) {
-    console.error("Erro interno do servidor:", err);
-    return res.status(500).json({ error: "Erro interno do servidor" });
-  }
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: true, methods: ['GET', 'POST'] },
+  transports: ['websocket', 'polling'],
 });
-// =====================================================================
 
-// ==================== SOCKET.IO PARA RASTREAMENTO EM TEMPO REAL ====================
-io.on("connection", (socket) => {
-  console.log("Novo cliente conectado:", socket.id);
+// Sockets
+io.on('connection', (socket) => {
+  console.log('✅ socket conectado:', socket.id);
 
-  // Motorista ou cliente entra na sala do pedido
-  socket.on("joinOrderRoom", ({ orderId }) => {
-    if (!orderId) return;
-    socket.join(orderId);
-    console.log(`Socket ${socket.id} entrou na sala do pedido ${orderId}`);
+  // Cliente confirmou endereço
+  socket.on('obterCoordenadas', async (payload) => {
+    try {
+      const coords = payload?.coordenadas;
+      if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') {
+        return socket.emit('dadosEntrega', { erro: 'Coordenadas inválidas' });
+      }
+      // Se quiser calcular tempo aqui, insira seu cálculo real.
+      const tempoEstimado = null; // cálculo opcional no servidor
+      socket.emit('dadosEntrega', { tempoEstimado, coordenadas: coords });
+      console.log('📤 dadosEntrega enviado ao cliente');
+    } catch (e) {
+      console.error('Erro obterCoordenadas:', e);
+      socket.emit('dadosEntrega', { erro: 'Falha ao processar endereço' });
+    }
   });
 
-  // Motorista envia atualização de localização
-  socket.on("updateLocation", (data) => {
-    const { orderId, latitude, longitude } = data || {};
-    if (!orderId || latitude == null || longitude == null) return;
-
-    console.log(`Atualizando localização do pedido ${orderId}:`, { latitude, longitude });
-    
-    // Envia para todos na sala do pedido (incluindo o cliente)
-    io.to(orderId).emit("locationUpdate", { latitude, longitude });
+  // Motorista enviou posição -> broadcast para todos os clientes
+  socket.on('localizacaoMotorista', (data) => {
+    if (!data || typeof data.lat !== 'number' || typeof data.lon !== 'number') return;
+    console.log('🚚 posição motorista recebida:', data);
+    io.emit('atualizacaoLocalizacao', data);
   });
 
-  socket.on("disconnect", () => {
-    console.log("Cliente desconectado:", socket.id);
+  socket.on('disconnect', () => {
+    console.log('🔌 socket desconectado:', socket.id);
   });
-});
-// ====================================================================================
-
-// Rota de teste
-app.get("/ping", (req, res) => {
-  res.send("pong");
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Servidor ouvindo na porta ${PORT}`);
-});
+server.listen(PORT, () => console.log(`🚀 Server on http://localhost:${PORT}`));
+
+
+
