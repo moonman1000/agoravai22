@@ -6,52 +6,204 @@
   <title>Rastrear Pedido</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <style>
-    *{box-sizing:border-box} 
-    body{font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;margin:0;background:#f5f5f5}
+    * {
+      box-sizing: border-box;
+    }
     
-    /* Info bar mais compacta */
-    .info-bar{background:#fff;padding:8px 15px;box-shadow:0 2px 5px rgba(0,0,0,.05)}
-    .info-item{margin:4px 0;display:flex;align-items:center;gap:8px;font-size:13px}
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      background: #f5f5f5;
+      overflow: hidden;
+    }
+    
+    /* Info bar compacta no topo */
+    .info-bar {
+      background: #fff;
+      padding: 8px 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,.1);
+      position: relative;
+      z-index: 1000;
+    }
+    
+    .info-item {
+      margin: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #333;
+    }
+    
+    .info-item strong {
+      color: #667eea;
+    }
     
     /* Mapa ocupando quase toda a tela */
-    #map{height:calc(100vh - 80px);width:100%}
+    #map {
+      height: calc(100vh - 75px);
+      width: 100%;
+    }
     
-    .connection-status{position:fixed;top:10px;right:10px;padding:8px 15px;border-radius:20px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 2px 10px rgba(0,0,0,.2)}
-    .connection-status.connected{background:#4caf50;color:#fff}
-    .connection-status.disconnected{background:#f44336;color:#fff}
-    .connection-status.waiting{background:#ff9800;color:#fff}
-    .alert{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2196F3;color:#fff;padding:15px 25px;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,.3);z-index:9999;display:none;max-width:90%;text-align:center}
-    .alert.show{display:block}
-    .loading-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:10000}
-    .loading-overlay.show{display:flex}
-    .loading-content{background:#fff;padding:30px;border-radius:15px;text-align:center}
-    .spinner{border:4px solid #f3f3f3;border-top:4px solid #667eea;border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite;margin:0 auto 15px}
-    @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+    /* Status de conexão */
+    .connection-status {
+      position: fixed;
+      top: 85px;
+      right: 10px;
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 9999;
+      box-shadow: 0 2px 10px rgba(0,0,0,.2);
+      transition: all 0.3s ease;
+    }
+    
+    .connection-status.connected {
+      background: #4caf50;
+      color: #fff;
+    }
+    
+    .connection-status.disconnected {
+      background: #f44336;
+      color: #fff;
+    }
+    
+    .connection-status.waiting {
+      background: #ff9800;
+      color: #fff;
+    }
+    
+    /* Alertas */
+    .alert {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2196F3;
+      color: #fff;
+      padding: 15px 25px;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(0,0,0,.3);
+      z-index: 9999;
+      display: none;
+      max-width: 90%;
+      text-align: center;
+      animation: slideUp 0.3s ease;
+    }
+    
+    .alert.show {
+      display: block;
+    }
+    
+    @keyframes slideUp {
+      from {
+        transform: translateX(-50%) translateY(20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+      }
+    }
+    
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+    
+    .loading-overlay.show {
+      display: flex;
+    }
+    
+    .loading-content {
+      background: #fff;
+      padding: 30px;
+      border-radius: 15px;
+      text-align: center;
+    }
+    
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    /* Customização do popup do Leaflet */
+    .leaflet-popup-content-wrapper {
+      border-radius: 10px;
+      box-shadow: 0 3px 14px rgba(0,0,0,.3);
+    }
+    
+    .leaflet-popup-content {
+      margin: 10px 15px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
+  <!-- Status de conexão -->
   <div class="connection-status waiting" id="connectionStatus">🟡 Aguardando motorista...</div>
   
-  <!-- REMOVIDO O HEADER "Rastreamento do Pedido" -->
-  
+  <!-- Barra de informações compacta -->
   <div class="info-bar">
-    <div class="info-item"><span>⏱️</span><span>Tempo estimado:</span> <strong id="tempoEntrega">Calculando...</strong></div>
-    <div class="info-item"><span>📍</span><span>Distância:</span> <strong id="distancia">-</strong></div>
-    <div class="info-item"><span>🚗</span><span>Status:</span> <strong id="statusMotorista">Aguardando motorista...</strong></div>
+    <div class="info-item">
+      <span>⏱️</span>
+      <span>Tempo estimado:</span> 
+      <strong id="tempoEntrega">Calculando...</strong>
+    </div>
+    <div class="info-item">
+      <span>📍</span>
+      <span>Distância:</span> 
+      <strong id="distancia">-</strong>
+    </div>
+    <div class="info-item">
+      <span>🚗</span>
+      <span>Status:</span> 
+      <strong id="statusMotorista">Aguardando motorista...</strong>
+    </div>
   </div>
+  
+  <!-- Mapa -->
   <div id="map"></div>
 
+  <!-- Loading overlay -->
   <div class="loading-overlay" id="loadingOverlay">
-    <div class="loading-content"><div class="spinner"></div><p style="margin:0">Calculando rota...</p></div>
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <p style="margin:0; color:#333; font-weight:500;">Calculando rota...</p>
+    </div>
   </div>
+  
+  <!-- Alertas -->
   <div class="alert" id="alert"></div>
 
+  <!-- Scripts -->
   <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-rotatedmarker/leaflet.rotatedMarker.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    // ========================================
+    // CONFIGURAÇÃO E INICIALIZAÇÃO
+    // ========================================
+    
     const socket = io(window.location.origin, {
-      transports: ['websocket','polling'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 10,
@@ -59,162 +211,395 @@
     });
 
     const apiKey = '5b3ce3597851110001cf6248461ce4f521b24420bbc67527fa68a8ab';
+    
+    // Offset do ângulo do ícone do carro (ajuste conforme necessário)
+    // Se o carro aponta para direita na imagem: -90
+    // Se aponta para cima: 0
+    // Se aponta para esquerda: 90
+    const ANGLE_OFFSET = -90;
 
+    // Elementos DOM
     const connectionStatus = document.getElementById('connectionStatus');
     const alertDiv = document.getElementById('alert');
     const loadingOverlay = document.getElementById('loadingOverlay');
 
-    function alertMsg(msg, t=3000){ alertDiv.textContent = msg; alertDiv.classList.add('show'); setTimeout(()=>alertDiv.classList.remove('show'), t); }
-    function calcularDistancia(lat1, lon1, lat2, lon2){
-      const R=6371e3, phi1=lat1*Math.PI/180, phi2=lat2*Math.PI/180;
-      const dPhi=(lat2-lat1)*Math.PI/180, dLambda=(lon2-lon1)*Math.PI/180;
-      const a=Math.sin(dPhi/2)**2 + Math.cos(phi1)*Math.cos(phi2)*Math.sin(dLambda/2)**2;
-      return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    // ========================================
+    // FUNÇÕES UTILITÁRIAS
+    // ========================================
+    
+    function alertMsg(msg, duration = 3000) {
+      alertDiv.textContent = msg;
+      alertDiv.classList.add('show');
+      setTimeout(() => alertDiv.classList.remove('show'), duration);
     }
-    function formatarTempo(min){ const h=Math.floor(min/60), m=Math.round(min%60); return h>0?`${h}h ${m}min`:`${m} min`; }
-    function bearing(lat1, lon1, lat2, lon2){ 
-      const rad=Math.PI/180, dLon=(lon2-lon1)*rad; 
-      const y=Math.sin(dLon)*Math.cos(lat2*rad); 
-      const x=Math.cos(lat1*rad)*Math.sin(lat2*rad)-Math.sin(lat1*rad)*Math.cos(lat2*rad)*Math.cos(dLon); 
-      return (Math.atan2(y,x)*180/Math.PI+360)%360; 
+    
+    function calcularDistancia(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // Raio da Terra em metros
+      const phi1 = lat1 * Math.PI / 180;
+      const phi2 = lat2 * Math.PI / 180;
+      const dPhi = (lat2 - lat1) * Math.PI / 180;
+      const dLambda = (lon2 - lon1) * Math.PI / 180;
+      
+      const a = Math.sin(dPhi / 2) ** 2 + 
+                Math.cos(phi1) * Math.cos(phi2) * 
+                Math.sin(dLambda / 2) ** 2;
+      
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    
+    function formatarTempo(minutos) {
+      const h = Math.floor(minutos / 60);
+      const m = Math.round(minutos % 60);
+      return h > 0 ? `${h}h ${m}min` : `${m} min`;
+    }
+    
+    function bearing(lat1, lon1, lat2, lon2) {
+      const rad = Math.PI / 180;
+      const dLon = (lon2 - lon1) * rad;
+      
+      const y = Math.sin(dLon) * Math.cos(lat2 * rad);
+      const x = Math.cos(lat1 * rad) * Math.sin(lat2 * rad) - 
+                Math.sin(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos(dLon);
+      
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
 
+    // ========================================
+    // VALIDAÇÃO DE COORDENADAS DE DESTINO
+    // ========================================
+    
     let coordenadasDestino = null;
     try {
       coordenadasDestino = JSON.parse(sessionStorage.getItem('coordenadasDestino'));
-      if (!coordenadasDestino?.lat || !coordenadasDestino?.lon) throw new Error('Coordenadas ausentes');
-    } catch {
+      if (!coordenadasDestino?.lat || !coordenadasDestino?.lon) {
+        throw new Error('Coordenadas ausentes');
+      }
+    } catch (error) {
       alert('Coordenadas de destino não encontradas. Redirecionando...');
       window.location.href = '/endereco.html';
     }
 
-    const map = L.map('map').setView([coordenadasDestino.lat, coordenadasDestino.lon], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(map);
+    // ========================================
+    // INICIALIZAÇÃO DO MAPA
+    // ========================================
+    
+    const map = L.map('map', {
+      zoomControl: true,
+      attributionControl: true
+    }).setView([coordenadasDestino.lat, coordenadasDestino.lon], 15);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
 
-    const destinoIcon = L.icon({ iconUrl:'casa.png', iconSize:[45,45], iconAnchor:[22,45], popupAnchor:[0,-45] });
-    const motoristaIcon = L.icon({ iconUrl:'wN5QD.png', iconSize:[50,50], iconAnchor:[25,25], popupAnchor:[0,-25] });
-    const destinoIconFallback = L.icon({ iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41], iconAnchor:[12,41], popupAnchor:[1,-34], shadowSize:[41,41] });
-    const motoristaIconFallback = L.icon({ iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41], iconAnchor:[12,41], popupAnchor:[1,-34], shadowSize:[41,41] });
+    // ========================================
+    // ÍCONES DOS MARCADORES
+    // ========================================
+    
+    const destinoIcon = L.icon({
+      iconUrl: 'casa.png',
+      iconSize: [45, 45],
+      iconAnchor: [22, 45],
+      popupAnchor: [0, -45]
+    });
+    
+    const motoristaIcon = L.icon({
+      iconUrl: 'wN5QD.png',
+      iconSize: [50, 50],
+      iconAnchor: [25, 25],
+      popupAnchor: [0, -25]
+    });
+    
+    // Fallback icons
+    const destinoIconFallback = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+    
+    const motoristaIconFallback = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
 
+    // ========================================
+    // MARCADOR DE DESTINO
+    // ========================================
+    
     let marcadorDestino;
-    try { 
-      marcadorDestino = L.marker([coordenadasDestino.lat, coordenadasDestino.lon], { icon: destinoIcon }).addTo(map).bindPopup('🏠 Endereço de Entrega').openPopup(); 
-    } catch { 
-      marcadorDestino = L.marker([coordenadasDestino.lat, coordenadasDestino.lon], { icon: destinoIconFallback }).addTo(map).bindPopup('🏠 Endereço de Entrega').openPopup(); 
+    try {
+      marcadorDestino = L.marker(
+        [coordenadasDestino.lat, coordenadasDestino.lon],
+        { icon: destinoIcon }
+      ).addTo(map).bindPopup('🏠 Endereço de Entrega').openPopup();
+    } catch (error) {
+      marcadorDestino = L.marker(
+        [coordenadasDestino.lat, coordenadasDestino.lon],
+        { icon: destinoIconFallback }
+      ).addTo(map).bindPopup('🏠 Endereço de Entrega').openPopup();
     }
 
-    let coordenadasMotorista=null, marcadorMotorista=null, rota=null, ultimaPosicao=null, ultimaRotaCalculada=null, animacaoAtiva=null, totalAtualizacoes=0;
+    // ========================================
+    // VARIÁVEIS DE ESTADO
+    // ========================================
+    
+    let coordenadasMotorista = null;
+    let marcadorMotorista = null;
+    let rota = null;
+    let ultimaPosicao = null;
+    let ultimaRotaCalculada = null;
+    let animacaoMotorista = null;
+    let totalAtualizacoes = 0;
 
-    async function calcularRotaETempoORS(latInicio, lonInicio, latFim, lonFim){
+    // ========================================
+    // ANIMAÇÃO SUAVE DO MOTORISTA (EFEITO WAZE/UBER)
+    // ========================================
+    
+    function animarMotorista(from, to, duracao = 800) {
+      if (!marcadorMotorista) return;
+      
+      // Cancela animação anterior se existir
+      if (animacaoMotorista) {
+        cancelAnimationFrame(animacaoMotorista);
+      }
+
+      const inicio = performance.now();
+      const ang = bearing(from.lat, from.lon, to.lat, to.lon);
+
+      function frame(agora) {
+        const elapsed = agora - inicio;
+        const t = Math.min(1, elapsed / duracao);
+        
+        // Interpolação linear (easing)
+        const lat = from.lat + (to.lat - from.lat) * t;
+        const lon = from.lon + (to.lon - from.lon) * t;
+
+        // Atualiza posição do marcador
+        marcadorMotorista.setLatLng([lat, lon]);
+        
+        // Atualiza rotação do marcador
+        marcadorMotorista.setRotationAngle(ang + ANGLE_OFFSET);
+
+        // Continua animação se não terminou
+        if (t < 1) {
+          animacaoMotorista = requestAnimationFrame(frame);
+        } else {
+          animacaoMotorista = null;
+        }
+      }
+
+      animacaoMotorista = requestAnimationFrame(frame);
+    }
+
+    // ========================================
+    // CÁLCULO DE ROTA (ORS + OSRM FALLBACK)
+    // ========================================
+    
+    async function calcularRotaETempoORS(latInicio, lonInicio, latFim, lonFim) {
       const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}&start=${lonInicio},${latInicio}&end=${lonFim},${latFim}`;
+      
       const resp = await fetch(url);
       if (!resp.ok) throw new Error('ORS HTTP ' + resp.status);
+      
       const data = await resp.json();
       if (!data.features?.length) throw new Error('ORS sem rota');
+      
       const seg = data.features[0].properties.segments[0];
-      const coords = data.features[0].geometry.coordinates.map(([x,y]) => [y,x]);
-      return { minutos: seg.duration/60, distanciaKm: seg.distance/1000, coords };
+      const coords = data.features[0].geometry.coordinates.map(([x, y]) => [y, x]);
+      
+      return {
+        minutos: seg.duration / 60,
+        distanciaKm: seg.distance / 1000,
+        coords
+      };
     }
-    async function calcularRotaETempoOSRM(latInicio, lonInicio, latFim, lonFim){
+    
+    async function calcularRotaETempoOSRM(latInicio, lonInicio, latFim, lonFim) {
       const url = `https://router.project-osrm.org/route/v1/driving/${lonInicio},${latInicio};${lonFim},${latFim}?overview=full&geometries=geojson`;
+      
       const resp = await fetch(url);
       if (!resp.ok) throw new Error('OSRM HTTP ' + resp.status);
+      
       const data = await resp.json();
       if (!data.routes?.length) throw new Error('OSRM sem rota');
+      
       const r = data.routes[0];
-      const coords = r.geometry.coordinates.map(([x,y]) => [y,x]);
-      return { minutos: r.duration/60, distanciaKm: r.distance/1000, coords };
+      const coords = r.geometry.coordinates.map(([x, y]) => [y, x]);
+      
+      return {
+        minutos: r.duration / 60,
+        distanciaKm: r.distance / 1000,
+        coords
+      };
     }
 
-    async function calcularRotaETempo(latInicio, lonInicio, latFim, lonFim){
+    async function calcularRotaETempo(latInicio, lonInicio, latFim, lonFim) {
+      // Throttling: só recalcula se motorista se moveu mais de 50m
       if (ultimaRotaCalculada) {
-        const d = calcularDistancia(ultimaRotaCalculada.lat, ultimaRotaCalculada.lon, latInicio, lonInicio);
+        const d = calcularDistancia(
+          ultimaRotaCalculada.lat,
+          ultimaRotaCalculada.lon,
+          latInicio,
+          lonInicio
+        );
         if (d < 50) return;
       }
+      
       try {
         loadingOverlay.classList.add('show');
-        let r;
-        try { r = await calcularRotaETempoORS(latInicio, lonInicio, latFim, lonFim); }
-        catch { r = await calcularRotaETempoOSRM(latInicio, lonInicio, latFim, lonFim); }
+        
+        let resultado;
+        try {
+          resultado = await calcularRotaETempoORS(latInicio, lonInicio, latFim, lonFim);
+        } catch (error) {
+          console.warn('ORS falhou, tentando OSRM...', error);
+          resultado = await calcularRotaETempoOSRM(latInicio, lonInicio, latFim, lonFim);
+        }
 
-        document.getElementById('tempoEntrega').innerText = formatarTempo(r.minutos);
-        document.getElementById('distancia').innerText = `${r.distanciaKm.toFixed(1)} km`;
+        // Atualiza UI
+        document.getElementById('tempoEntrega').innerText = formatarTempo(resultado.minutos);
+        document.getElementById('distancia').innerText = `${resultado.distanciaKm.toFixed(1)} km`;
 
-        if (rota) rota.setLatLngs(r.coords);
-        else rota = L.polyline(r.coords, { color:'#2196F3', weight:5, opacity:.7 }).addTo(map);
+        // Atualiza ou cria a linha da rota
+        if (rota) {
+          rota.setLatLngs(resultado.coords);
+        } else {
+          rota = L.polyline(resultado.coords, {
+            color: '#2196F3',
+            weight: 5,
+            opacity: 0.7,
+            smoothFactor: 1
+          }).addTo(map);
+        }
 
-        map.fitBounds(L.latLngBounds([[latInicio,lonInicio],[latFim,lonFim]]), { padding:[50,50] });
+        // Ajusta bounds do mapa para mostrar toda a rota
+        const bounds = L.latLngBounds([
+          [latInicio, lonInicio],
+          [latFim, lonFim]
+        ]);
+        map.fitBounds(bounds, { padding: [50, 50] });
+        
         ultimaRotaCalculada = { lat: latInicio, lon: lonInicio };
-      } catch (e) {
-        console.error('Erro rota:', e);
+        
+      } catch (error) {
+        console.error('Erro ao calcular rota:', error);
         alertMsg('⚠️ Erro ao calcular rota. Tentando novamente...');
       } finally {
         loadingOverlay.classList.remove('show');
       }
     }
 
+    // ========================================
+    // EVENTOS DO SOCKET
+    // ========================================
+    
     socket.on('connect', () => {
       console.log('Socket conectado');
-      connectionStatus.textContent='🟢 Conectado';
-      connectionStatus.className='connection-status connected';
-      alertMsg('✅ Conectado');
+      connectionStatus.textContent = '🟢 Conectado';
+      connectionStatus.className = 'connection-status connected';
+      alertMsg('✅ Conectado ao servidor');
     });
+    
     socket.on('disconnect', () => {
       console.log('Socket desconectado');
-      connectionStatus.textContent='🔴 Desconectado';
-      connectionStatus.className='connection-status disconnected';
-      document.getElementById('statusMotorista').textContent='Desconectado do servidor';
-      alertMsg('❌ Conexão perdida.');
+      connectionStatus.textContent = '🔴 Desconectado';
+      connectionStatus.className = 'connection-status disconnected';
+      document.getElementById('statusMotorista').textContent = 'Desconectado do servidor';
+      alertMsg('❌ Conexão perdida. Tentando reconectar...');
     });
 
     socket.on('atualizacaoLocalizacao', (data) => {
       console.log('Atualização recebida:', data);
       totalAtualizacoes++;
+      
       const nova = { lat: data.lat, lon: data.lon };
+      
+      // Atualiza status de conexão
       connectionStatus.textContent = '🟢 Rastreando';
       connectionStatus.className = 'connection-status connected';
 
-      const distanciaParaDestino = calcularDistancia(nova.lat, nova.lon, coordenadasDestino.lat, coordenadasDestino.lon);
+      // Calcula distância para o destino
+      const distanciaParaDestino = calcularDistancia(
+        nova.lat,
+        nova.lon,
+        coordenadasDestino.lat,
+        coordenadasDestino.lon
+      );
+      
+      // Atualiza status baseado na distância
       if (distanciaParaDestino <= 20) {
         document.getElementById('statusMotorista').textContent = '🎉 Seu pedido chegou!';
+        alertMsg('🎉 Motorista chegou ao destino!', 5000);
+      } else if (distanciaParaDestino <= 100) {
+        document.getElementById('statusMotorista').textContent = '📍 Motorista muito próximo';
       } else {
-        document.getElementById('statusMotorista').textContent = 'Motorista a caminho';
+        document.getElementById('statusMotorista').textContent = '🚗 Motorista a caminho';
       }
 
+      // Cria ou atualiza marcador do motorista
       if (marcadorMotorista) {
-        marcadorMotorista.setLatLng([nova.lat, nova.lon]);
-        if (ultimaPosicao) {
-          const ang = bearing(ultimaPosicao.lat, ultimaPosicao.lon, nova.lat, nova.lon);
-          // CORREÇÃO: ícone aponta para direita (90°), então subtraímos 90° para alinhar com norte
-          marcadorMotorista.setRotationAngle(ang - 90);
-        }
+        // Anima movimento do marcador existente
+        const from = ultimaPosicao || nova;
+        animarMotorista(from, nova, 800);
       } else {
+        // Cria marcador pela primeira vez
         try {
-          marcadorMotorista = L.marker([nova.lat, nova.lon], { 
-            icon: motoristaIcon, 
-            rotationAngle: 0, 
-            rotationOrigin: 'center' 
-          }).addTo(map).bindPopup('🚗 Motorista').openPopup();
-        } catch {
-          marcadorMotorista = L.marker([nova.lat, nova.lon], { 
-            icon: motoristaIconFallback, 
-            rotationAngle: 0, 
-            rotationOrigin: 'center' 
-          }).addTo(map).bindPopup('🚗 Motorista').openPopup();
+          marcadorMotorista = L.marker([nova.lat, nova.lon], {
+            icon: motoristaIcon,
+            rotationAngle: 0,
+            rotationOrigin: 'center'
+          }).addTo(map).bindPopup('🚗 Motorista');
+          
+          alertMsg('🚗 Motorista localizado!', 2500);
+        } catch (error) {
+          console.warn('Erro ao criar marcador customizado, usando fallback', error);
+          marcadorMotorista = L.marker([nova.lat, nova.lon], {
+            icon: motoristaIconFallback,
+            rotationAngle: 0,
+            rotationOrigin: 'center'
+          }).addTo(map).bindPopup('🚗 Motorista');
         }
-        alertMsg('🚗 Motorista localizado!', 2500);
       }
 
+      // Atualiza posição armazenada
       ultimaPosicao = { ...nova };
       coordenadasMotorista = nova;
+      
+      // Recalcula rota
       calcularRotaETempo(nova.lat, nova.lon, coordenadasDestino.lat, coordenadasDestino.lon);
 
-      map.panTo([nova.lat, nova.lon], { animate: true });
+      // Centraliza mapa no motorista com animação suave
+      map.panTo([nova.lat, nova.lon], {
+        animate: true,
+        duration: 0.5
+      });
     });
 
+    // ========================================
+    // TIMEOUT DE ESPERA
+    // ========================================
+    
     setTimeout(() => {
-      if (!coordenadasMotorista) alertMsg('⚠️ Aguardando motorista iniciar a entrega...', 5000);
+      if (!coordenadasMotorista) {
+        alertMsg('⚠️ Aguardando motorista iniciar a entrega...', 5000);
+      }
     }, 30000);
+
+    // ========================================
+    // LOG DE DEBUG (REMOVER EM PRODUÇÃO)
+    // ========================================
+    
+    console.log('Mapa inicializado');
+    console.log('Destino:', coordenadasDestino);
+    console.log('Offset de ângulo do ícone:', ANGLE_OFFSET);
   </script>
 </body>
 </html>
