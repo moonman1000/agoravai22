@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rastrear Pedido em Tempo Real</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"
+          integrity="sha384-jWvQwZ0pniS3pSGLr0MyOc0A9jAO6Rv9QOhzO9mQxTRuHsvC85QFqS5HP0o36yS2"
+          crossorigin="anonymous"></script>
+
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
+    #map { width: 100vw; height: 100vh; }
+    .info-box {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      right: 8px;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      font-size: 14px;
+      z-index: 500;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 12px;
+    }
+    .motorista-icon {
+      font-size: 28px;
+      text-align: center;
+      line-height: 32px;
+    }
+    .motorista-icon .car-body {
+      transform-origin: 50% 50%;
+      transition: transform 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="info-box">
+    <div>
+      <div><strong>Rastreamento em tempo real</strong></div>
+      <div id="status">Carregando...</div>
+    </div>
+    <span class="status-pill" id="statusPill">Carregando</span>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderId = urlParams.get("orderId");
+
+    const statusEl = document.getElementById("status");
+    const statusPill = document.getElementById("statusPill");
+
+    if (!orderId) {
+      statusEl.textContent = "Erro: nenhum orderId informado na URL.";
+      statusPill.textContent = "Erro";
+      statusPill.style.background = "#fee2e2";
+      statusPill.style.color = "#b91c1c";
+      throw new Error("orderId ausente");
+    }
+
+    let map = null;
+    let destinoMarker = null;
+    let motoristaMarker = null;
+    let lastLatLng = null;
+
+    function updateStatus(text, mode) {
+      statusEl.textContent = text;
+      if (mode === "ok") {
+        statusPill.textContent = "Conectado";
+        statusPill.style.background = "#dcfce7";
+        statusPill.style.color = "#166534";
+      } else if (mode === "waiting") {
+        statusPill.textContent = "Aguardando motorista";
+        statusPill.style.background = "#fef9c3";
+        statusPill.style.color = "#854d0e";
+      } else if (mode === "error") {
+        statusPill.textContent = "Erro";
+        statusPill.style.background = "#fee2e2";
+        statusPill.style.color = "#b91c1c";
+      } else {
+        statusPill.textContent = "Carregando";
+        statusPill.style.background = "#dbeafe";
+        statusPill.style.color = "#1d4ed8";
+      }
+    }
+
+    // Calcular o ângulo entre dois pontos (bearing)
+    function getBearing(fromLatLng, toLatLng) {
+      const fromLat = fromLatLng.lat * Math.PI / 180;
+      const fromLng = fromLatLng.lng * Math.PI / 180;
+      const toLat = toLatLng.lat * Math.PI / 180;
+      const toLng = toLatLng.lng * Math.PI / 180;
+
+      const y = Math.sin(toLng - fromLng) * Math.cos(toLat);
+      const x = Math.cos(fromLat) * Math.sin(toLat) -
+                Math.sin(fromLat) * Math.cos(toLat) * Math.cos(toLng - fromLng);
+      let brng = Math.atan2(y, x) * 180 / Math.PI;
+      return (brng + 360) % 360; // 0–360
+    }
+
+    // Animar o marcador suavemente entre dois pontos
+    function animateMarker(marker, fromLatLng, toLatLng, duration = 1000) {
+      const start = performance.now();
+
+      function frame(now) {
+        const t = Math.min((now - start) / duration, 1);
+        const lat = fromLatLng.lat + (toLatLng.lat - fromLatLng.lat) * t;
+        const lng = fromLatLng.lng + (toLatLng.lng - fromLatLng.lng) * t;
+        marker.setLatLng([lat, lng]);
+
+        if (t < 1) requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
+    }
+
+    // Criar marcador do motorista com ícone rotacionável
+    function createMotoristaMarker(lat, lng) {
+      motoristaMarker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: "motorista-icon",
+          html: '<div class="car-body">🚗</div>',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        }),
+      }).addTo(map);
+      motoristaMarker.bindPopup("Entregador");
+    }
+
+    // Buscar coordenadas do pedido via API
+    async function fetchOrderDestination() {
+      updateStatus("Buscando informações do pedido...", "loading");
+      
+      try {
+        const resp = await fetch(`/api/orders/${orderId}`);
+        
+        if (!resp.ok) {
+          throw new Error("Pedido não encontrado no servidor");
+        }
+
+        const order = await resp.json();
+
+        if (!order.client_lat || !order.client_lng) {
+          throw new Error("Pedido sem coordenadas de destino cadastradas");
+        }
+
+        return {
+          lat: order.client_lat,
+          lon: order.client_lng,
+        };
+      } catch (e) {
+        console.error("Erro ao buscar destino:", e);
+        updateStatus(
+          "Não foi possível encontrar o endereço de destino. Tente abrir o rastreio novamente pelo app.",
+          "error"
+        );
+        throw e;
+      }
+    }
+
+    // Inicializar mapa e Socket.IO
+    (async () => {
+      let destino;
+      
+      try {
+        destino = await fetchOrderDestination();
+      } catch (e) {
+        return; // já mostrou erro no updateStatus
+      }
+
+      map = L.map("map").setView([destino.lat, destino.lon], 14);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+
+      destinoMarker = L.marker([destino.lat, destino.lon]).addTo(map);
+      destinoMarker.bindPopup("Endereço de entrega").openPopup();
+
+      updateStatus("Conectando ao servidor de rastreamento...", "connecting");
+
+      const socket = io();
+
+      socket.on("connect", () => {
+        updateStatus("Conectado. Aguardando posição do entregador...", "waiting");
+        socket.emit("joinOrderRoom", { orderId });
+      });
+
+      socket.on("disconnect", () => {
+        updateStatus("Conexão perdida. Tentando reconectar...", "error");
+      });
+
+      socket.on("locationUpdate", (data) => {
+        const { latitude, longitude } = data || {};
+        if (latitude == null || longitude == null) return;
+
+        const newLatLng = L.latLng(latitude, longitude);
+
+        if (!motoristaMarker) {
+          // Primeira posição - criar o marcador
+          createMotoristaMarker(latitude, longitude);
+          lastLatLng = newLatLng;
+        } else {
+          const oldLatLng = lastLatLng || motoristaMarker.getLatLng();
+
+          // 1) Calcular o bearing para girar o carro na direção do movimento
+          const bearing = getBearing(oldLatLng, newLatLng);
+          const el = motoristaMarker.getElement();
+          if (el) {
+            const body = el.querySelector(".car-body");
+            if (body) {
+              body.style.transform = `rotate(${bearing}deg)`;
+            }
+          }
+
+          // 2) Animar a posição do marcador (movimento suave)
+          animateMarker(motoristaMarker, oldLatLng, newLatLng, 1000); // 1 segundo
+
+          lastLatLng = newLatLng;
+        }
+
+        updateStatus(
+          `Entregador em movimento: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+          "ok"
+        );
+
+        const bounds = L.latLngBounds(
+          [destino.lat, destino.lon],
+          newLatLng
+        );
+        map.fitBounds(bounds, { padding: [40, 40] });
+      });
+    })();
+  </script>
+</body>
+</html>
